@@ -2,47 +2,52 @@ import asyncio
 import csv
 import os
 from datetime import datetime
-from kasa import Discover, Module
+import pytz
+from kasa import SmartPlug
 
 # --- CONFIGURATION ---
-PLUG_IP = "192.168.1.237" # Replace with your plug's IP
-CSV_FILE = "server_power_usage.csv"
+DEVICE_IP = "192.168.1.237"
+TIMEZONE = "America/Chicago"  # Fulshear, Texas
+LOG_FILE = "server_power_usage.csv"
 
-async def main():
+async def record_usage():
     try:
-        # Connect using the new discover_single method (fixes the SmartPlug warning)
-        plug = await Discover.discover_single(PLUG_IP)
+        # 1. Setup Timezone and Plug
+        tz = pytz.timezone(TIMEZONE)
+        now = datetime.now(tz)
+        
+        plug = SmartPlug(DEVICE_IP)
         await plug.update()
 
-        # Check if the plug supports the new Energy module
-        if Module.Energy not in plug.modules:
-            print("Error: This Kasa plug model does not support energy monitoring.")
-            return
+        # 2. Gather Data
+        # Timestamp with TZ abbreviation (e.g., 2026-04-21 23:19:00 CDT)
+        timestamp = now.strftime("%Y-%m-%d %H:%M:%S %Z")
+        
+        # Real-time Watts (Hourly snapshot)
+        current_watts = plug.emeter_realtime.power 
+        
+        # Daily Total (Total kWh used since midnight)
+        daily_kwh = plug.emeter_today
+        
+        # Monthly Total (Total kWh used since the 1st)
+        monthly_kwh = plug.emeter_this_month
 
-        # Pull the data using the updated syntax (fixes the emeter_this_month warning)
-        plug_name = plug.alias
-        monthly_kwh = plug.modules[Module.Energy].consumption_this_month
-        today_date = datetime.now().strftime("%Y-%m-%d")
+        # 3. Prepare CSV
+        headers = ["Timestamp", "Watts_Realtime", "Daily_Total_kWh", "Monthly_Total_kWh"]
+        row = [timestamp, current_watts, daily_kwh, monthly_kwh]
 
-        # Check if the CSV file already exists so we know whether to write headers
-        file_exists = os.path.isfile(CSV_FILE)
-
-        # Open the CSV file and append the new data
-        with open(CSV_FILE, mode='a', newline='') as file:
+        file_exists = os.path.isfile(LOG_FILE)
+        with open(LOG_FILE, mode='a', newline='') as file:
             writer = csv.writer(file)
-
-            # Write column headers if it's a brand new file
             if not file_exists:
-                writer.writerow(["Date", "Plug Name", "Month-to-Date Usage (kWh)"])
+                writer.writerow(headers)
+            writer.writerow(row)
 
-            # Write the data row
-            writer.writerow([today_date, plug_name, monthly_kwh])
-
-        print(f"Success! Logged {monthly_kwh} kWh for '{plug_name}' on {today_date}.")
+        print(f"[{timestamp}] Saved to {LOG_FILE}: {current_watts}W | {daily_kwh}kWh Day | {monthly_kwh}kWh Month")
 
     except Exception as e:
-        print(f"Failed to connect or log data: {e}")
+        print(f"Error connecting to Kasa plug: {e}")
+        exit(1)
 
 if __name__ == "__main__":
-    # Run the asynchronous main function
-    asyncio.run(main())
+    asyncio.run(record_usage())
