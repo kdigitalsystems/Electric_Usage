@@ -6,9 +6,9 @@ import pytz
 from kasa import SmartPlug
 
 # --- CONFIGURATION ---
-DEVICE_IP = "192.168.1.237"
+DEVICE_IP = "192.168.1.239"
 TIMEZONE = "America/Chicago"  # Fulshear, Texas
-LOG_FILE = "server_power_usage.csv"
+LOG_FILE = "server_power_usage_plug2.csv"
 
 async def record_usage():
     try:
